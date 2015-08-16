@@ -111,6 +111,7 @@ class UpdateCommand extends Command
 
                     if ($progress !== null) {
                         $progress->finish();
+                        $progress = null;
                         $output->writeln('');
                     }
                     if (!$process->isSuccessful()) {
@@ -147,6 +148,7 @@ class UpdateCommand extends Command
 
                     if ($progress !== null) {
                         $progress->finish();
+                        $progress = null;
                         $output->writeln('');
                     }
 
