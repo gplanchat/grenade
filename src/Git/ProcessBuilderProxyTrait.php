@@ -13,6 +13,16 @@ trait ProcessBuilderProxyTrait
     private $processBuilder;
 
     /**
+     * @var string
+     */
+    private $cwd = null;
+
+    /**
+     * @var float
+     */
+    private $timeout = null;
+
+    /**
      * @param string|array $prefix A command prefix or an array of command prefixes
      * @param null|string $cwd The working directory
      * @param float|null $timeout
@@ -20,7 +30,7 @@ trait ProcessBuilderProxyTrait
     private function initProcessBuilder(array $prefix = [], $cwd = null, $timeout = null)
     {
         $this->processBuilder = new ProcessBuilder();
-        $this->processBuilder->setPrefix(['git', 'subtree']);
+        $this->processBuilder->setPrefix($prefix);
 
         if ($cwd !== null) {
             $this->setWorkingDirectory($cwd);
@@ -39,6 +49,7 @@ trait ProcessBuilderProxyTrait
      */
     public function setWorkingDirectory(string $cwd): ProcessBuilderProxyInterface
     {
+        $this->cwd = $cwd;
         $this->processBuilder->setWorkingDirectory($cwd);
 
         return $this;
@@ -125,6 +136,7 @@ trait ProcessBuilderProxyTrait
      */
     public function setTimeout(float $timeout): ProcessBuilderProxyInterface
     {
+        $this->timeout = $timeout;
         $this->processBuilder->setTimeout($timeout);
 
         return $this;
@@ -167,5 +179,21 @@ trait ProcessBuilderProxyTrait
         $this->processBuilder->enableOutput();
 
         return $this;
+    }
+
+    /**
+     * @return string
+     */
+    protected function getWorkingDirectory(): string
+    {
+        return $this->cwd;
+    }
+
+    /**
+     * @return float
+     */
+    protected function getTimeout(): float
+    {
+        return $this->timeout;
     }
 }
