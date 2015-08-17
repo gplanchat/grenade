@@ -97,14 +97,14 @@ class UpdateCommand extends Command
                 }
             }
 
-            foreach ($config->walkRepositories($projectName) as $repositoryAlias => $repositoryConfig) {
+            foreach ($config->walkBundles($projectName) as $repositoryAlias => $repositoryConfig) {
                 $output->writeln(sprintf('<fg=green>Analyzing bundle <fg=cyan>%s</fg=cyan>...</fg=green>', $repositoryConfig['name']));
 
                 foreach ($originalGit->branchList(false, true, 'origin') as $branchAlias => $branchName) {
                     try {
                         $process = $originalGit->revParse()->verify($branchName);
                         if ($process->isSuccessful() &&
-                            $config->compareRepositoryBranchHead($projectName, $repositoryAlias, $branchName, $process->getOutput())
+                            $config->compareBundleBranchHead($projectName, $repositoryAlias, $branchName, $process->getOutput())
                         ) {
                             $output->writeln(sprintf('  <fg=green>Branch <fg=cyan>%s</fg=cyan> up to date, skipping...</fg=green>', $branchName));
                             continue;
@@ -159,7 +159,7 @@ class UpdateCommand extends Command
 
                         $process = $originalGit->revParse()->verify($branchName);
                         if ($process->isSuccessful()) {
-                            $config->updateRepositoryBranch($projectName, $repositoryAlias, $branchName, $process->getOutput());
+                            $config->updateBundleBranch($projectName, $repositoryAlias, $branchName, $process->getOutput());
                         }
                     } catch (CommandFailureException $e) {
                         $output->writeln($formatter->formatBlock([
