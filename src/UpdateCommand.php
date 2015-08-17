@@ -4,21 +4,13 @@ namespace Luni\Console\Grenade;
 
 use Github\Api\CurrentUser;
 use Github\Api\Organization;
-use Github\Api\Repo;
-use Github\Client;
 use Luni\Console\Grenade\Git\Git;
+use Luni\Console\Grenade\Git\GitSubtreeProgressBarHelper;
+use Luni\Console\Grenade\RuntimeException as GrenadeRuntimeException;
 use Symfony\Component\Console\Command\Command;
-use Symfony\Component\Console\Helper\ProgressBar;
-use Symfony\Component\Console\Helper\QuestionHelper;
-use Symfony\Component\Console\Input\Input;
-use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
-use Symfony\Component\Console\Question\Question;
-use Symfony\Component\Process\Process;
-use Symfony\Component\Process\Exception\RuntimeException;
-use Symfony\Component\Process\ProcessBuilder;
 
 class UpdateCommand extends Command
 {
@@ -49,8 +41,20 @@ class UpdateCommand extends Command
         $cwd = getcwd() . '/' . $input->getOption('working-dir');
         $timeout = (int) $input->getOption('timeout');
 
-        $repositoriesConfig = $this->loadConfig($cwd, $output);
-        if ($repositoriesConfig === null) {
+        /** @var Config $config */
+        $config = new Config($cwd);
+
+        try {
+            if (!$config->read()) {
+                $output->writeln('<fg=red>No previous config found, please run grenade:config</fg=red>');
+                return -1;
+            }
+
+            $output->writeln('<fg=yellow>Previous config found.</fg=yellow>');
+            $output->writeln('<fg=yellow>Loading existing config...</fg=yellow> <fg=green>done</fg=green>');
+        } catch (GrenadeRuntimeException $e) {
+            $output->writeln('<fg=red>failed</fg=red>');
+            $output->writeln('<fg=red>An error occured while parsing .grenade.json file.</fg=red>');
             return -1;
         }
 
@@ -63,20 +67,25 @@ class UpdateCommand extends Command
             mkdir($cwd . '/bundles', 0755, true);
         }
 
-        foreach ($repositoriesConfig as $repositoryInfo) {
-            $repositoryPath = $cwd . '/repositories/' . $repositoryInfo['alias'];
+        /** @var GitSubtreeProgressBarHelper $progressBarHelper */
+        $progressBarHelper = new GitSubtreeProgressBarHelper($output);
+
+        foreach ($config->walkProjects() as $projectName => $projectRemote) {
+            $repositoryPath = $cwd . '/repositories/' . $projectName;
 
             $originalGit = new Git($repositoryPath, $timeout);
             $bundleGit = new Git(null, $timeout);
             if (!file_exists($repositoryPath)) {
-                $output->writeln(sprintf('<fg=green>Cloning <fg=cyan>%s</fg=cyan> repository.</fg=green>', $repositoryInfo['alias']));
+                $output->writeln(sprintf('<fg=green>Cloning <fg=cyan>%s</fg=cyan> repository.</fg=green>', $projectName));
 
-                $process = $originalGit->cloneRepository($repositoryInfo['remote'], $repositoryInfo['alias'], $cwd . '/repositories/');
+                $originalGit->setWorkingDirectory($cwd . '/repositories/');
+                $process = $originalGit->cloneRepository($projectRemote, $projectName);
                 if (!$process->isSuccessful()) {
                     throw new CommandFailureException($process);
                 }
+                $originalGit->setWorkingDirectory($repositoryPath);
             } else {
-                $output->writeln(sprintf('<fg=green>Fetching <fg=cyan>%s</fg=cyan> repository.</fg=green>', $repositoryInfo['alias']));
+                $output->writeln(sprintf('<fg=green>Fetching <fg=cyan>%s</fg=cyan> repository.</fg=green>', $projectName));
 
                 $process = $originalGit->fetch();
                 if (!$process->isSuccessful()) {
@@ -84,103 +93,66 @@ class UpdateCommand extends Command
                 }
             }
 
-            foreach ($repositoryInfo['repositories'] as $bundleRepository) {
-                $process = $originalGit->revParse()->verify('grenade/bundles/' . $bundleRepository['alias']);
+            foreach ($config->walkRepositories($projectName) as $repositoryAlias => $repositoryConfig) {
+                $output->writeln(sprintf('<fg=green>Analyzing bundle <fg=cyan>%s</fg=cyan>...</fg=green>', $repositoryConfig['name']));
 
-                $bundleRepositoryPath = $cwd . '/bundles/' . $bundleRepository['alias'];
-                if (!$process->isSuccessful() || !file_exists($bundleRepositoryPath)) {
-                    $output->writeln(sprintf('<fg=green>Splitting the bundle <fg=cyan>%s</fg=cyan> into a new <fg=cyan>%s</fg=cyan> branch.</fg=green>',
-                        $bundleRepository['name'], 'grenade/bundles/' . $bundleRepository['alias']));
+                foreach ($originalGit->branchList(false, true, 'origin') as $branchAlias => $branchName) {
+                    $output->writeln(sprintf('  <fg=green>Exporting branch <fg=cyan>%s</fg=cyan>...</fg=green>', $branchName));
+                    $process = $originalGit->revParse()->verify('grenade/bundles/' . $repositoryAlias . '/' . $branchAlias);
 
-                    /** @var ProgressBar $progress */
-                    $progress = null;
+                    $bundleRepositoryPath = $cwd . '/bundles/' . $repositoryAlias;
+                    if (!$process->isSuccessful() || !file_exists($bundleRepositoryPath)) {
+                        $output->writeln(sprintf('  <fg=green>Splitting into a new <fg=cyan>%s</fg=cyan> branch.</fg=green>',
+                            'grenade/bundles/' . $repositoryAlias . '/' . $branchAlias));
 
-                    $process = $originalGit->subtree()->split(
-                        'grenade/bundles/' . $bundleRepository['alias'], $bundleRepository['path'], null, null, false, null,
-                        function($type, $buffer) use(&$progress, $output) {
-                        if ($type === 'err' && preg_match('/^-n\s*\d+\s*\/\s*(\d+)\s*\((\d+)\)\s*$/', $buffer, $matches)) {
-                            if ($progress === null) {
-                                $progress = new ProgressBar($output, (int) $matches[1]);
-                                $progress->setBarWidth(100);
-                                $progress->start();
-                            }
+                        $progressBarHelper->reset();
+                        $process = $originalGit->subtree()->split(
+                            'grenade/bundles/' . $repositoryAlias . '/' . $branchAlias,
+                            $repositoryConfig['path'], null, 'origin/' . $branchAlias, false, null, $progressBarHelper);
+                        $progressBarHelper->finish();
 
-                            $progress->advance();
+                        if (!$process->isSuccessful()) {
+                            throw new CommandFailureException($process);
                         }
-                    });
 
-                    if ($progress !== null) {
-                        $progress->finish();
-                        $progress = null;
-                        $output->writeln('');
-                    }
-                    if (!$process->isSuccessful()) {
-                        throw new CommandFailureException($process);
-                    }
+                        $bundleGit->setWorkingDirectory($bundleRepositoryPath);
+                        if (!file_exists($bundleRepositoryPath)) {
+                            $output->writeln(sprintf('  <fg=green>Initializing git repository for <fg=cyan>%s</fg=cyan> bundle.</fg=green>',
+                                $repositoryConfig['name']));
 
-                    $bundleGit->setWorkingDirectory($bundleRepositoryPath);
-                    if (!file_exists($bundleRepositoryPath)) {
-                        $output->writeln(sprintf('<fg=green>Initializing git repository for <fg=cyan>%s</fg=cyan> bundle.</fg=green>',
-                            $bundleRepository['name']));
-
-                        mkdir($bundleRepositoryPath, 0755, true);
-                        $bundleGit->init();
-                    }
-
-                    $bundleGit->pull($repositoryPath, 'grenade/bundles/' . $bundleRepository['alias']);
-                } else {
-                    $output->writeln(sprintf('<fg=green>Updating the <fg=cyan>%s</fg=cyan> bundle\'s code into the <fg=cyan>%s</fg=cyan> branch.</fg=green>',
-                        $bundleRepository['name'], 'grenade/bundles/' . $bundleRepository['alias']));
-
-                    $process = $originalGit->subtree()->push(
-                        $bundleRepositoryPath, 'grenade/bundles/' . $bundleRepository['alias'], $bundleRepository['path'],
-                        function($type, $buffer) use(&$progress, $output) {
-                        if ($type === 'err' && preg_match('/^-n\s*\d+\s*\/\s*(\d+)\s*\((\d+)\)\s*$/', $buffer, $matches)) {
-                            if ($progress === null) {
-                                $progress = new ProgressBar($output, (int) $matches[1]);
-                                $progress->setBarWidth(100);
-                                $progress->start();
-                            }
-
-                            $progress->advance();
+                            mkdir($bundleRepositoryPath, 0755, true);
+                            $bundleGit->init();
                         }
-                    });
 
-                    if ($progress !== null) {
-                        $progress->finish();
-                        $progress = null;
-                        $output->writeln('');
+                        $output->writeln(sprintf('  <fg=green>Pulling branch <fg=cyan>%s</fg=cyan> in the bundle repository.</fg=green>',
+                            'grenade/bundles/' . $repositoryAlias . '/' . $branchName));
+                        $bundleGit->pull($repositoryPath, 'grenade/bundles/' . $repositoryAlias . '/' . $branchName);
+                    } else {
+                        $output->writeln(sprintf('  <fg=green>Updating the <fg=cyan>%s</fg=cyan> bundle\'s code into the <fg=cyan>%s</fg=cyan> branch.</fg=green>',
+                            $repositoryConfig['name'], 'grenade/bundles/' . $repositoryAlias));
+
+                        $progressBarHelper->reset();
+                        $process = $originalGit->subtree()->push(
+                            $bundleRepositoryPath, 'grenade/bundles/' . $repositoryAlias . '/' . $branchName,
+                            $repositoryConfig['path'], $progressBarHelper);
+                        $progressBarHelper->finish();
+
+                        if (!$process->isSuccessful()) {
+                            throw new CommandFailureException($process);
+                        }
+                        break;
                     }
 
-                    if (!$process->isSuccessful()) {
-                        throw new CommandFailureException($process);
+                    $process = $originalGit->revParse()->verify('grenade/bundles/' . $repositoryAlias . '/' . $branchName);
+                    if ($process->isSuccessful()) {
+                        $config->updateRepositoryBranch($projectName, $repositoryAlias, $branchName, $process->getOutput());
                     }
-
-                    continue;
                 }
             }
         }
+
+        $config->save();
+
         return 0;
-    }
-
-    private function loadConfig($cwd, OutputInterface $output)
-    {
-        if (file_exists($cwd . '/.grenade.json')) {
-            $output->writeln('<fg=yellow>Previous config found.</fg=yellow>');
-            $output->write('<fg=yellow>Loading existing config...</fg=yellow> ');
-            $repositoriesData = json_decode(file_get_contents($cwd . '/.grenade.json'), true);
-            if ($repositoriesData !== null) {
-                $output->writeln('<fg=green>done</fg=green>');
-            } else {
-                $output->writeln('<fg=red>failed</fg=red>');
-                $output->writeln('<fg=red>An error occured while parsing .grenade.json file.</fg=red>');
-                return null;
-            }
-        } else {
-            $output->writeln('<fg=red>No previous config found, please run grenade:config</fg=red>');
-            return null;
-        }
-
-        return $repositoriesData;
     }
 }

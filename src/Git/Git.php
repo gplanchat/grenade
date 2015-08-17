@@ -152,6 +152,51 @@ class Git
         return new GitSubtree($this->getWorkingDirectory(), $this->getTimeout());
     }
 
+    /**
+     * @param bool|true $local
+     * @param bool|false $remote
+     * @param string $remoteName
+     * @return array
+     */
+    public function branchList(bool $local = true, bool $remote = false, string $remoteName = null): array
+    {
+        $this->processBuilder->setArguments(['branch']);
+
+        if ($remote === true) {
+            if ($local !== null) {
+                $this->processBuilder->add('-a');
+            } else {
+                $this->processBuilder->add('-r');
+            }
+        }
+
+        $process = $this->processBuilder->getProcess();
+
+        $process->run();
+
+        $branchList = explode(PHP_EOL, $process->getOutput());
+        if ($remote === true && $remoteName !== null) {
+            $newBranchList = [];
+            foreach ($branchList as $branch) {
+                $branch = preg_filter('#^\*?\s*#', '', $branch);
+
+                if (strpos($branch, 'remotes/' . $remoteName . '/') !== 0) {
+                    continue;
+                }
+
+                $shortName = str_replace('remotes/' . $remoteName . '/', '', $branch);
+                $newBranchList[$shortName] = $branch;
+            }
+            $branchList = $newBranchList;
+        }
+
+        $branchList = array_filter($branchList, function($item) {
+            return strpos($item, '/HEAD ') === false;
+        });
+
+        return $branchList;
+    }
+
 /*
     public function config(callable $callback = null): Process {}
     public function add(callable $callback = null): Process {}
