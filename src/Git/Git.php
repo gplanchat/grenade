@@ -196,7 +196,6 @@ class Git
 
         return $branchList;
     }
-
 /*
     public function config(callable $callback = null): Process {}
     public function add(callable $callback = null): Process {}

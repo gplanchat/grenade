@@ -4,6 +4,11 @@ namespace Luni\Console\Grenade\Git;
 
 use Symfony\Component\Process\Process;
 
+/**
+ * Class GitSubtree
+ * @package Luni\Console\Grenade\Git
+ * @see http://opensource.apple.com/source/Git/Git-37/src/git/contrib/subtree/git-subtree.sh
+ */
 class GitSubtree
     implements ProcessBuilderProxyInterface
 {

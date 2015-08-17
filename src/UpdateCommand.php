@@ -102,6 +102,14 @@ class UpdateCommand extends Command
 
                 foreach ($originalGit->branchList(false, true, 'origin') as $branchAlias => $branchName) {
                     try {
+                        $process = $originalGit->revParse()->verify($branchName);
+                        if ($process->isSuccessful() &&
+                            $config->compareRepositoryBranchHead($projectName, $repositoryAlias, $branchName, $process->getOutput())
+                        ) {
+                            $output->writeln(sprintf('  <fg=green>Branch <fg=cyan>%s</fg=cyan> up to date, skipping...</fg=green>', $branchName));
+                            continue;
+                        }
+
                         $output->writeln(sprintf('  <fg=green>Exporting branch <fg=cyan>%s</fg=cyan>...</fg=green>', $branchName));
                         $process = $originalGit->revParse()->verify($this->derivedBranch($repositoryAlias, $branchAlias));
 
@@ -116,7 +124,9 @@ class UpdateCommand extends Command
                                 $repositoryConfig['path'], null, 'origin/' . $branchAlias, false, null, $progressBarHelper);
                             $progressBarHelper->finish();
 
-                            if (!$process->isSuccessful()) {
+                            if ($progressBarHelper->updatesCount() <= 0) {
+                                $output->writeln(sprintf('  <fg=green>Fast-forward update for branch <fg=cyan>%s</fg=cyan>.</fg=green>', $branchAlias));
+                            } else if (!$process->isSuccessful()) {
                                 throw new CommandFailureException($process);
                             }
 
@@ -147,22 +157,19 @@ class UpdateCommand extends Command
                             }
                         }
 
-                        $process = $originalGit->revParse()->verify($this->derivedBranch($repositoryAlias, $branchAlias));
+                        $process = $originalGit->revParse()->verify($branchName);
                         if ($process->isSuccessful()) {
                             $config->updateRepositoryBranch($projectName, $repositoryAlias, $branchName, $process->getOutput());
                         }
                     } catch (CommandFailureException $e) {
                         $output->writeln($formatter->formatBlock([
                             'An error occurred while exporting subtrees.',
-                            '  ' . $e->getMessage(),
-                            '  Command line was : ' . $e->getCommandLine(),
-                            $e->getTraceAsString(),
+                            $e->__toString(),
                         ], 'error'));
                     } catch (RuntimeException $e) {
                         $output->writeln($formatter->formatBlock([
                             'An error occurred while exporting subtrees.',
-                            '  ' . $e->getMessage(),
-                            $e->getTraceAsString(),
+                            $e->__toString(),
                         ], 'error'));
                     }
                 }

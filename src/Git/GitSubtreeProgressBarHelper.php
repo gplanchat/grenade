@@ -18,6 +18,11 @@ class GitSubtreeProgressBarHelper
     private $progressBar;
 
     /**
+     * @var int
+     */
+    private $updates;
+
+    /**
      * @param OutputInterface $output
      */
     public function __construct(OutputInterface $output)
@@ -39,6 +44,7 @@ class GitSubtreeProgressBarHelper
             }
 
             $this->progressBar->advance();
+            $this->updates = $matches[2];
         }
     }
 
@@ -53,5 +59,14 @@ class GitSubtreeProgressBarHelper
     public function reset()
     {
         $this->progressBar = null;
+        $this->updates = null;
+    }
+
+    /**
+     * @return int
+     */
+    public function updatesCount()
+    {
+        return $this->updates;
     }
 }

@@ -68,18 +68,38 @@ class Config
     }
 
     /**
+     * @return int
+     */
+    public function projectCount(): int
+    {
+        return count($this->repositoriesConfig);
+    }
+
+    /**
      * @param string $project
      * @return \Generator
      */
     public function walkRepositories(string $project): \Generator
     {
-        if (!isset($this->repositoriesConfig[$project])) {
+        if (!isset($this->repositoriesConfig[$project]['repositories'])) {
             throw new RuntimeException('Invalid .grenade.json data.');
         }
 
         foreach ($this->repositoriesConfig[$project]['repositories'] as $repositoryName => $repositoryConfig) {
             yield $repositoryName => $repositoryConfig;
         }
+    }
+
+    /**
+     * @return int
+     */
+    public function repositoriesCount(string $project): int
+    {
+        if (!isset($this->repositoriesConfig[$project]['repositories'])) {
+            throw new RuntimeException('Invalid .grenade.json data.');
+        }
+
+        return count($this->repositoriesConfig[$project]['repositories']);
     }
 
     /**
@@ -103,6 +123,31 @@ class Config
             $this->repositoriesConfig[$project][$repository]['heads'] = [];
         }
 
-        $this->repositoriesConfig[$project]['repositories'][$repository]['heads'][$branch] = $hash;
+        $this->repositoriesConfig[$project]['repositories'][$repository]['heads'][$branch] = trim($hash);
+    }
+
+    /**
+     * @param string $project
+     * @param string $repository
+     * @param string $branch
+     * @param string $hash
+     * @return bool
+     */
+    public function compareRepositoryBranchHead(string $project, string $repository, string $branch, string $hash): bool
+    {
+        if (!isset($this->repositoriesConfig[$project])) {
+            return false;
+        }
+        if (!isset($this->repositoriesConfig[$project]['repositories'])) {
+            return false;
+        }
+        if (!isset($this->repositoriesConfig[$project]['repositories'][$repository])) {
+            return false;
+        }
+        if (!isset($this->repositoriesConfig[$project]['repositories'][$repository]['heads'])) {
+            return false;
+        }
+
+        return $this->repositoriesConfig[$project]['repositories'][$repository]['heads'][$branch] === trim($hash);
     }
 }

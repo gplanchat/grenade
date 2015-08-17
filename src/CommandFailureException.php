@@ -12,8 +12,7 @@ class CommandFailureException
 
     public function __construct(Process $process, \Throwable $previous = null)
     {
-        parent::__construct(sprintf('%s' . PHP_EOL . '%s', $process->getCommandLine(), $process->getErrorOutput()),
-            $process->getExitCode(), $previous);
+        parent::__construct($process->getErrorOutput(), $process->getExitCode(), $previous);
         $this->commandLine = $process->getCommandLine();
     }
 
@@ -30,7 +29,7 @@ class CommandFailureException
      */
     public function __toString()
     {
-        return sprintf('%s' . PHP_EOL, '%s returned code %d' . PHP_EOL . '%s',
+        return sprintf('%s' . PHP_EOL . '%s returned code %d' . PHP_EOL . '%s',
             $this->getMessage(), $this->getCommandLine(), $this->getCode(), $this->getTraceAsString());
     }
 }
