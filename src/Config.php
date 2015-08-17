@@ -93,13 +93,16 @@ class Config
         if (!isset($this->repositoriesConfig[$project])) {
             throw new RuntimeException('Invalid project name.');
         }
-        if (!isset($this->repositoriesConfig[$project][$repository])) {
+        if (!isset($this->repositoriesConfig[$project]['repositories'])) {
+            throw new RuntimeException('Uninitialized project.');
+        }
+        if (!isset($this->repositoriesConfig[$project]['repositories'][$repository])) {
             throw new RuntimeException('Invalid repository name.');
         }
-        if (!isset($this->repositoriesConfig[$project][$repository]['heads'])) {
+        if (!isset($this->repositoriesConfig[$project]['repositories'][$repository]['heads'])) {
             $this->repositoriesConfig[$project][$repository]['heads'] = [];
         }
 
-        $this->repositoriesConfig[$project][$repository]['heads'][$branch] = $hash;
+        $this->repositoriesConfig[$project]['repositories'][$repository]['heads'][$branch] = $hash;
     }
 }

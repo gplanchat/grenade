@@ -8,6 +8,7 @@ use Luni\Console\Grenade\Git\Git;
 use Luni\Console\Grenade\Git\GitSubtreeProgressBarHelper;
 use Luni\Console\Grenade\RuntimeException as GrenadeRuntimeException;
 use Symfony\Component\Console\Command\Command;
+use Symfony\Component\Console\Helper\FormatterHelper;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
@@ -40,6 +41,9 @@ class UpdateCommand extends Command
     {
         $cwd = getcwd() . '/' . $input->getOption('working-dir');
         $timeout = (int) $input->getOption('timeout');
+
+        /** @var FormatterHelper $formatter */
+        $formatter = $this->getHelperSet()->get('formatter');
 
         /** @var Config $config */
         $config = new Config($cwd);
@@ -97,55 +101,69 @@ class UpdateCommand extends Command
                 $output->writeln(sprintf('<fg=green>Analyzing bundle <fg=cyan>%s</fg=cyan>...</fg=green>', $repositoryConfig['name']));
 
                 foreach ($originalGit->branchList(false, true, 'origin') as $branchAlias => $branchName) {
-                    $output->writeln(sprintf('  <fg=green>Exporting branch <fg=cyan>%s</fg=cyan>...</fg=green>', $branchName));
-                    $process = $originalGit->revParse()->verify('grenade/bundles/' . $repositoryAlias . '/' . $branchAlias);
+                    try {
+                        $output->writeln(sprintf('  <fg=green>Exporting branch <fg=cyan>%s</fg=cyan>...</fg=green>', $branchName));
+                        $process = $originalGit->revParse()->verify($this->derivedBranch($repositoryAlias, $branchAlias));
 
-                    $bundleRepositoryPath = $cwd . '/bundles/' . $repositoryAlias;
-                    if (!$process->isSuccessful() || !file_exists($bundleRepositoryPath)) {
-                        $output->writeln(sprintf('  <fg=green>Splitting into a new <fg=cyan>%s</fg=cyan> branch.</fg=green>',
-                            'grenade/bundles/' . $repositoryAlias . '/' . $branchAlias));
+                        $bundleRepositoryPath = $cwd . '/bundles/' . $repositoryAlias;
+                        if (!$process->isSuccessful() || !file_exists($bundleRepositoryPath)) {
+                            $output->writeln(sprintf('  <fg=green>Splitting into a new <fg=cyan>%s</fg=cyan> branch.</fg=green>',
+                                $this->derivedBranch($repositoryAlias, $branchAlias)));
 
-                        $progressBarHelper->reset();
-                        $process = $originalGit->subtree()->split(
-                            'grenade/bundles/' . $repositoryAlias . '/' . $branchAlias,
-                            $repositoryConfig['path'], null, 'origin/' . $branchAlias, false, null, $progressBarHelper);
-                        $progressBarHelper->finish();
+                            $progressBarHelper->reset();
+                            $process = $originalGit->subtree()->split(
+                                $this->derivedBranch($repositoryAlias, $branchAlias),
+                                $repositoryConfig['path'], null, 'origin/' . $branchAlias, false, null, $progressBarHelper);
+                            $progressBarHelper->finish();
 
-                        if (!$process->isSuccessful()) {
-                            throw new CommandFailureException($process);
+                            if (!$process->isSuccessful()) {
+                                throw new CommandFailureException($process);
+                            }
+
+                            $bundleGit->setWorkingDirectory($bundleRepositoryPath);
+                            if (!file_exists($bundleRepositoryPath)) {
+                                $output->writeln(sprintf('  <fg=green>Initializing git repository for <fg=cyan>%s</fg=cyan> bundle.</fg=green>',
+                                    $repositoryConfig['name']));
+
+                                mkdir($bundleRepositoryPath, 0755, true);
+                                $bundleGit->init();
+                            }
+
+                            $output->writeln(sprintf('  <fg=green>Pulling branch <fg=cyan>%s</fg=cyan> in the bundle repository.</fg=green>',
+                                $this->derivedBranch($repositoryAlias, $branchAlias)));
+                            $bundleGit->pull($repositoryPath, $this->derivedBranch($repositoryAlias, $branchAlias));
+                        } else {
+                            $output->writeln(sprintf('  <fg=green>Updating the <fg=cyan>%s</fg=cyan> bundle\'s code into the <fg=cyan>%s</fg=cyan> branch.</fg=green>',
+                                $repositoryConfig['name'], $this->derivedBranch($repositoryAlias, $branchAlias)));
+
+                            $progressBarHelper->reset();
+                            $process = $originalGit->subtree()->push(
+                                $bundleRepositoryPath, $this->derivedBranch($repositoryAlias, $branchAlias),
+                                $repositoryConfig['path'], $progressBarHelper);
+                            $progressBarHelper->finish();
+
+                            if (!$process->isSuccessful()) {
+                                throw new CommandFailureException($process);
+                            }
                         }
 
-                        $bundleGit->setWorkingDirectory($bundleRepositoryPath);
-                        if (!file_exists($bundleRepositoryPath)) {
-                            $output->writeln(sprintf('  <fg=green>Initializing git repository for <fg=cyan>%s</fg=cyan> bundle.</fg=green>',
-                                $repositoryConfig['name']));
-
-                            mkdir($bundleRepositoryPath, 0755, true);
-                            $bundleGit->init();
+                        $process = $originalGit->revParse()->verify($this->derivedBranch($repositoryAlias, $branchAlias));
+                        if ($process->isSuccessful()) {
+                            $config->updateRepositoryBranch($projectName, $repositoryAlias, $branchName, $process->getOutput());
                         }
-
-                        $output->writeln(sprintf('  <fg=green>Pulling branch <fg=cyan>%s</fg=cyan> in the bundle repository.</fg=green>',
-                            'grenade/bundles/' . $repositoryAlias . '/' . $branchName));
-                        $bundleGit->pull($repositoryPath, 'grenade/bundles/' . $repositoryAlias . '/' . $branchName);
-                    } else {
-                        $output->writeln(sprintf('  <fg=green>Updating the <fg=cyan>%s</fg=cyan> bundle\'s code into the <fg=cyan>%s</fg=cyan> branch.</fg=green>',
-                            $repositoryConfig['name'], 'grenade/bundles/' . $repositoryAlias));
-
-                        $progressBarHelper->reset();
-                        $process = $originalGit->subtree()->push(
-                            $bundleRepositoryPath, 'grenade/bundles/' . $repositoryAlias . '/' . $branchName,
-                            $repositoryConfig['path'], $progressBarHelper);
-                        $progressBarHelper->finish();
-
-                        if (!$process->isSuccessful()) {
-                            throw new CommandFailureException($process);
-                        }
-                        break;
-                    }
-
-                    $process = $originalGit->revParse()->verify('grenade/bundles/' . $repositoryAlias . '/' . $branchName);
-                    if ($process->isSuccessful()) {
-                        $config->updateRepositoryBranch($projectName, $repositoryAlias, $branchName, $process->getOutput());
+                    } catch (CommandFailureException $e) {
+                        $output->writeln($formatter->formatBlock([
+                            'An error occurred while exporting subtrees.',
+                            '  ' . $e->getMessage(),
+                            '  Command line was : ' . $e->getCommandLine(),
+                            $e->getTraceAsString(),
+                        ], 'error'));
+                    } catch (RuntimeException $e) {
+                        $output->writeln($formatter->formatBlock([
+                            'An error occurred while exporting subtrees.',
+                            '  ' . $e->getMessage(),
+                            $e->getTraceAsString(),
+                        ], 'error'));
                     }
                 }
             }
@@ -154,5 +172,10 @@ class UpdateCommand extends Command
         $config->save();
 
         return 0;
+    }
+
+    private function derivedBranch($repositoryAlias, $branchAlias)
+    {
+        return sprintf('grenade/bundles/%s/%s', $repositoryAlias, $branchAlias);
     }
 }
