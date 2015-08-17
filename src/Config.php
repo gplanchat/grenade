@@ -120,7 +120,7 @@ class Config
             throw new RuntimeException('Invalid repository name.');
         }
         if (!isset($this->repositoriesConfig[$project]['repositories'][$repository]['heads'])) {
-            $this->repositoriesConfig[$project][$repository]['heads'] = [];
+            $this->repositoriesConfig[$project]['repositories'][$repository]['heads'] = [];
         }
 
         $this->repositoriesConfig[$project]['repositories'][$repository]['heads'][$branch] = trim($hash);
