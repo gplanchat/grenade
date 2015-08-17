@@ -54,7 +54,7 @@ class Config
         }
 
         return 0 < file_put_contents($this->workingDirectory . '/.grenade.json',
-            json_encode($this->repositoriesConfig, JSON_PRETTY_PRINT));
+            json_encode($this->repositoriesConfig, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
     }
 
     /**
