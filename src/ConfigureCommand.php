@@ -84,9 +84,6 @@ class ConfigureCommand extends Command
         /** @var QuestionHelper $question */
         $question = $this->getHelperSet()->get('question');
 
-        /** @var FormatterHelper $formatter */
-        $formatter = $this->getHelperSet()->get('formatter');
-
         /** @var Config $config */
         $config = new Config($cwd);
 

@@ -114,6 +114,24 @@ class Config
     /**
      * @param string $projectAlias
      * @param string $bundleAlias
+     * @return null|string
+     */
+    public function getBundleName(string $projectAlias, string $bundleAlias): string
+    {
+        if (!isset($this->repositoriesConfig[$projectAlias]['bundles'][$bundleAlias])) {
+            throw new RuntimeException(sprintf('Bundle %s was not configured in project %s.',
+                $bundleAlias, $projectAlias));
+        }
+        if (!isset($this->repositoriesConfig[$projectAlias]['bundles'][$bundleAlias]['name'])) {
+            return null;
+        }
+
+        return $this->repositoriesConfig[$projectAlias]['bundles'][$bundleAlias]['name'];
+    }
+
+    /**
+     * @param string $projectAlias
+     * @param string $bundleAlias
      * @param string $organizationName
      */
     public function setBundleRemoteOrganization(string $projectAlias, string $bundleAlias, string $organizationName)

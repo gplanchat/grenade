@@ -137,6 +137,22 @@ class Git
     }
 
     /**
+     * @param string $remote
+     * @param callable|null $callback
+     * @return Process
+     */
+    public function pushToMirror(string $remote, callable $callback = null): Process
+    {
+        $this->processBuilder->setArguments(['push', '--mirror', $remote]);
+
+        $process = $this->processBuilder->getProcess();
+
+        $process->run($callback);
+
+        return $process;
+    }
+
+    /**
      * @return GitRevParse
      */
     public function revParse(): GitRevParse
@@ -153,12 +169,21 @@ class Git
     }
 
     /**
+     * @return GitRemote
+     */
+    public function remote(): GitRemote
+    {
+        return new GitRemote($this->getWorkingDirectory(), $this->getTimeout());
+    }
+
+    /**
      * @param bool|true $local
      * @param bool|false $remote
      * @param string $remoteName
+     * @param string $branchFilter
      * @return array
      */
-    public function branchList(bool $local = true, bool $remote = false, string $remoteName = null): array
+    public function branchList(bool $local = true, bool $remote = false, string $remoteName = null, string $branchFilter = '#/(?:\d+\.\d+()|master)$#'): array
     {
         $this->processBuilder->setArguments(['branch']);
 
@@ -190,8 +215,11 @@ class Git
             $branchList = $newBranchList;
         }
 
-        $branchList = array_filter($branchList, function($item) {
-            return strpos($item, '/HEAD ') === false;
+        $branchList = array_filter($branchList, function($item) use($branchFilter) {
+            if (strpos($item, '/HEAD ') !== false) {
+                return false;
+            }
+            return preg_match($branchFilter, $item);
         });
 
         return $branchList;
@@ -208,7 +236,6 @@ class Git
     public function stash(callable $callback = null): Process {}
     public function tag(callable $callback = null): Process {}
     public function push(callable $callback = null): Process {}
-    public function remote(callable $callback = null): Process {}
     public function show(callable $callback = null): Process {}
     public function lsTree(callable $callback = null): Process {}
     public function catFile(callable $callback = null): Process {}
